@@ -140,29 +140,45 @@ class Minion(
             }
 
             Scheduler.get().runAt(location) { task ->
-                val canBuildAt = AxMinionsPlugin.integrations.getProtectionIntegration().canBuildAt(
-                    event.player,
-                    event.packetEntity.location()
-                )
+                try {
+                    val canBuildAt = AxMinionsPlugin.integrations.getProtectionIntegration().canBuildAt(
+                        event.player,
+                        event.packetEntity.location()
+                    )
 
-                if (event.isAttack) {
-                    if (event.player.inventory.firstEmpty() == -1) {
-                        broken.set(false)
+                    if (event.isAttack) {
+                        if (event.player.inventory.firstEmpty() == -1) {
+                            broken.set(false)
+                        } else {
+                            if (ownerUUID == event.player.uniqueId) {
+                                breakMinion(event)
+                            } else if ((canBuildAt && !Config.ONLY_OWNER_BREAK()) || event.player.hasPermission("axminions.*")) {
+                                breakMinion(event)
+                            } else {
+                                broken.set(false)
+                            }
+                        }
                     } else {
                         if (ownerUUID == event.player.uniqueId) {
-                            breakMinion(event)
-                        } else if ((canBuildAt && !Config.ONLY_OWNER_BREAK()) || event.player.hasPermission("axminions.*")) {
-                            breakMinion(event)
-                        } else {
-                            broken.set(false)
+                            openInventory(event.player)
+                        } else if ((canBuildAt && !Config.ONLY_OWNER_GUI()) || event.player.hasPermission("axminions.*")) {
+                            openInventory(event.player)
                         }
                     }
-                } else {
-                    if (ownerUUID == event.player.uniqueId) {
-                        openInventory(event.player)
-                    } else if ((canBuildAt && !Config.ONLY_OWNER_GUI()) || event.player.hasPermission("axminions.*")) {
-                        openInventory(event.player)
-                    }
+                } catch (throwable: Throwable) {
+                    AxMinionsPlugin.INSTANCE.logger.log(
+                        java.util.logging.Level.SEVERE,
+                        "[${Thread.currentThread().name}] Exception while handling interaction with minion" +
+                            " (type=${type.getName()}, owner=${owner.name}, location=${location.world?.name} ${location.blockX},${location.blockY},${location.blockZ})" +
+                            " triggered by player ${event.player.name}",
+                        throwable
+                    )
+                } finally {
+                    // Defensively reset `broken` at the end of every branch: if any path above threw
+                    // (e.g. an island/protection integration returning null), leaving it set to true
+                    // would permanently brick the minion since the outer handler guards on !broken.get().
+                    // On a successful break the entity is already removed, so resetting here is harmless.
+                    broken.set(false)
                 }
             }
         }
@@ -199,7 +215,13 @@ class Minion(
     private fun breakMinion(event: PacketEntityInteractEvent) {
         val preBreakEvent = PreMinionPickupEvent(event.player, this)
         Bukkit.getPluginManager().callEvent(preBreakEvent)
-        if (preBreakEvent.isCancelled) return
+        if (preBreakEvent.isCancelled) {
+            // If a protection/island plugin cancels the pickup, the minion is NOT broken.
+            // Reset the atomic so the minion stays interactive; otherwise the outer interact
+            // handler (which returns early on broken.get()) permanently ignores it for everyone.
+            broken.set(false)
+            return
+        }
 
         LinkingListener.linking.remove(event.player)
         remove()

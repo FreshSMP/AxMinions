@@ -2,8 +2,8 @@ package com.artillexstudios.axminions
 
 import com.artillexstudios.axapi.AxPlugin
 import com.artillexstudios.axapi.dependencies.DependencyManagerWrapper
-import com.artillexstudios.axapi.executor.ThreadedQueue
 import com.artillexstudios.axapi.scheduler.Scheduler
+import com.artillexstudios.axminions.executor.DataQueue
 import com.artillexstudios.axapi.utils.featureflags.FeatureFlags
 import com.artillexstudios.axminions.api.AxMinionsAPI
 import com.artillexstudios.axminions.api.AxMinionsAPIImpl
@@ -46,7 +46,7 @@ class AxMinionsPlugin : AxPlugin() {
         lateinit var messages: Messages
         lateinit var config: Config
         lateinit var dataHandler: DataHandler
-        lateinit var dataQueue: ThreadedQueue<Runnable>
+        lateinit var dataQueue: DataQueue
         lateinit var integrations: Integrations
     }
 
@@ -78,7 +78,7 @@ class AxMinionsPlugin : AxPlugin() {
         integrations.reload()
 
         loadDataHandler()
-        dataQueue = ThreadedQueue("AxMinions-Database-Queue")
+        dataQueue = DataQueue("AxMinions-Database-Queue")
 
         MinionTypes.also {
             it.register(CollectorMinionType())

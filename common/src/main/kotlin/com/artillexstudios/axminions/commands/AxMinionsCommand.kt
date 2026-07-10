@@ -10,6 +10,7 @@ import com.artillexstudios.axminions.api.config.Messages
 import com.artillexstudios.axminions.api.data.DataHandler
 import com.artillexstudios.axminions.api.minions.miniontype.MinionType
 import com.artillexstudios.axminions.api.minions.miniontype.MinionTypes
+import com.artillexstudios.axminions.api.utils.Keys
 import com.artillexstudios.axminions.api.utils.fastFor
 import com.artillexstudios.axminions.converter.LitMinionsConverter
 import com.artillexstudios.axminions.integrations.island.SuperiorSkyBlock2Integration
@@ -21,6 +22,7 @@ import org.bukkit.OfflinePlayer
 import org.bukkit.World.Environment
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
+import org.bukkit.persistence.PersistentDataType
 import revxrsal.commands.annotation.*
 import revxrsal.commands.bukkit.annotation.CommandPermission
 import java.util.concurrent.CompletableFuture
@@ -134,6 +136,27 @@ class AxMinionsCommand {
 
             sender.sendMessage(StringUtils.formatToString(Messages.PREFIX() + Messages.RESET(), Placeholder.unparsed("player", offlinePlayer.name ?: "---")))
         }
+    }
+
+    @Subcommand("fixitem")
+    @CommandPermission("axminions.command.fixitem")
+    @Description("Strip the axminions:placed tag from the held item to recover a bricked minion item")
+    fun fixItem(player: Player) {
+        val item = player.inventory.itemInMainHand
+        if (item.type.isAir) {
+            player.sendMessage(StringUtils.formatToString(Messages.PREFIX() + "<red>You must be holding an item."))
+            return
+        }
+
+        val meta = item.itemMeta
+        if (meta == null || !meta.persistentDataContainer.has(Keys.PLACED, PersistentDataType.BYTE)) {
+            player.sendMessage(StringUtils.formatToString(Messages.PREFIX() + "<red>The held item is not a stuck minion item."))
+            return
+        }
+
+        meta.persistentDataContainer.remove(Keys.PLACED)
+        item.itemMeta = meta
+        player.sendMessage(StringUtils.formatToString(Messages.PREFIX() + "<green>Removed the stuck placement tag from the held item."))
     }
 
     @Subcommand("extraslot")

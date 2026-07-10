@@ -19,7 +19,7 @@ data class ChunkPos(val world: World, val x: Int, val z: Int, @Volatile @JvmFiel
 
     fun setTicking(ticking: Boolean) {
         minions.forEach {
-            it.setTicking(true)
+            it.setTicking(ticking)
         }
 
         this.ticking = ticking
