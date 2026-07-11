@@ -12,6 +12,8 @@ import com.artillexstudios.axminions.api.minions.miniontype.MinionTypes
 import com.artillexstudios.axminions.api.utils.Keys
 import com.artillexstudios.axminions.minions.Minion
 import com.artillexstudios.axminions.minions.Minions
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder
 import org.bukkit.Bukkit
@@ -21,10 +23,38 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerJoinEvent
+import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 
 class MinionPlaceListener : Listener {
+
+    companion object {
+        private val inFlight: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
+
+        fun isPlacing(uuid: UUID): Boolean {
+            return inFlight.contains(uuid)
+        }
+    }
+
+    @EventHandler
+    fun onPlayerJoinEvent(event: PlayerJoinEvent) {
+        for (item in event.player.inventory.contents) {
+            if (item == null || item.type.isAir || !item.hasItemMeta()) continue
+
+            val meta = item.itemMeta ?: continue
+            if (!meta.persistentDataContainer.has(Keys.PLACED, PersistentDataType.BYTE)) continue
+
+            meta.persistentDataContainer.remove(Keys.PLACED)
+            item.itemMeta = meta
+        }
+    }
+
+    @EventHandler
+    fun onPlayerQuitEvent(event: PlayerQuitEvent) {
+        inFlight.remove(event.player.uniqueId)
+    }
 
     @EventHandler
     fun onPlayerInteractEvent(event: PlayerInteractEvent) {
@@ -36,6 +66,13 @@ class MinionPlaceListener : Listener {
         val type = meta.persistentDataContainer.get(Keys.MINION_TYPE, PersistentDataType.STRING) ?: return
         val minionType = MinionTypes.valueOf(type) ?: return
         event.isCancelled = true
+
+        if (inFlight.contains(event.player.uniqueId)) return
+
+        if (meta.persistentDataContainer.has(Keys.PLACED, PersistentDataType.BYTE)) {
+            meta.persistentDataContainer.remove(Keys.PLACED)
+            item.itemMeta = meta
+        }
 
         if (!AxMinionsPlugin.integrations.getProtectionIntegration()
                 .canBuildAt(event.player, event.clickedBlock!!.location)
@@ -59,8 +96,6 @@ class MinionPlaceListener : Listener {
             return
         }
 
-        if (meta.persistentDataContainer.has(Keys.PLACED, PersistentDataType.BYTE)) return
-
         Bukkit.getPluginManager().callEvent(prePlaceEvent)
         if (prePlaceEvent.isCancelled) return
 
@@ -73,11 +108,8 @@ class MinionPlaceListener : Listener {
 
         val chunk = location.chunk
 
-        // The axminions:placed marker was set on `item` above, BEFORE this async lambda runs.
-        // If anything inside throws (e.g. an island integration returning null), the marker must
-        // still be stripped, otherwise the item is permanently inert: placing is skipped (marker
-        // present), interacting is cancelled, and dropping is cancelled. The finally-style cleanup
-        // guarantees the marker is always removed on the region thread.
+        inFlight.add(event.player.uniqueId)
+
         AxMinionsPlugin.dataQueue.submit {
             try {
                 val placed = AxMinionsPlugin.dataHandler.getMinionAmount(event.player.uniqueId)
@@ -190,17 +222,19 @@ class MinionPlaceListener : Listener {
                 AxMinionsPlugin.INSTANCE.logger.log(
                     Level.SEVERE,
                     "[${Thread.currentThread().name}] Exception while placing minion (type=${minionType.getName()}) for player ${event.player.name}" +
-                        " at ${location.world?.name} ${location.blockX},${location.blockY},${location.blockZ}",
+                            " at ${location.world?.name} ${location.blockX},${location.blockY},${location.blockZ}",
                     throwable
                 )
             } finally {
-                // Always strip the axminions:placed marker on the player's region thread so a failed
-                // placement never leaves the held item permanently inert.
                 Scheduler.get().run { _ ->
-                    val currentMeta = item.itemMeta ?: return@run
-                    if (currentMeta.persistentDataContainer.has(Keys.PLACED, PersistentDataType.BYTE)) {
-                        currentMeta.persistentDataContainer.remove(Keys.PLACED)
-                        item.itemMeta = currentMeta
+                    try {
+                        val currentMeta = item.itemMeta
+                        if (currentMeta != null && currentMeta.persistentDataContainer.has(Keys.PLACED, PersistentDataType.BYTE)) {
+                            currentMeta.persistentDataContainer.remove(Keys.PLACED)
+                            item.itemMeta = currentMeta
+                        }
+                    } finally {
+                        inFlight.remove(event.player.uniqueId)
                     }
                 }
             }

@@ -16,6 +16,13 @@ class MinionDropListener : Listener {
 
         if (!meta.persistentDataContainer.has(Keys.PLACED, PersistentDataType.BYTE)) return
 
-        event.isCancelled = true
+        if (MinionPlaceListener.isPlacing(event.player.uniqueId)) {
+            event.isCancelled = true
+            return
+        }
+
+        meta.persistentDataContainer.remove(Keys.PLACED)
+        item.itemMeta = meta
+        event.itemDrop.itemStack = item
     }
 }
