@@ -98,12 +98,13 @@ class Minion(
     private var warning: Warning? = null
     private var hologram: Hologram? = null
     private val extraData = hashMapOf<String, String>()
-    private var linkedInventory: Inventory? = null
     internal val openInventories = mutableListOf<Inventory>()
     private var toolMeta: ItemMeta? = null
 
     @Volatile
     private var ticking = false
+    private var resolvedInventory: Inventory? = null
+    private var resolvedInventoryTick = -1L
     private var debugHologram: Hologram? = null
     val broken = AtomicBoolean(false)
     private var ownerOnline = false
@@ -591,14 +592,10 @@ class Minion(
 
     override fun setLinkedChest(location: Location?) {
         this.linkedChest = location?.clone()
-        if (linkedChest != null) {
-            Scheduler.get().executeAt(linkedChest) {
-                linkedInventory = (linkedChest?.block?.state as? Container)?.inventory
+        this.resolvedInventoryTick = -1L
 
-                updateInventories()
-            }
-        } else {
-            linkedInventory = null
+        Scheduler.get().executeAt(this.location) {
+            updateInventories()
         }
 
         AxMinionsPlugin.dataQueue.submit {
@@ -644,28 +641,38 @@ class Minion(
     }
 
     override fun getLinkedInventory(): Inventory? {
-        return linkedInventory
+        val chest = linkedChest ?: return null
+        val tick = MinionTicker.getTick()
+        if (tick == resolvedInventoryTick) return resolvedInventory
+
+        val world = chest.world
+        val inventory = if (world == null || !world.isChunkLoaded(chest.blockX shr 4, chest.blockZ shr 4)) {
+            null
+        } else {
+            (chest.block.state as? Container)?.inventory
+        }
+
+        resolvedInventory = inventory
+        resolvedInventoryTick = tick
+        return inventory
     }
 
     override fun addToContainerOrDrop(itemStack: ItemStack) {
-        if (linkedInventory == null) {
+        val inventory = getLinkedInventory()
+        if (inventory == null) {
             AxMinionsPlugin.integrations.getStackerIntegration().dropItemAt(itemStack, itemStack.amount, location)
             return
         }
 
-        val remaining = linkedInventory?.addItem(itemStack)
+        val remaining = inventory.addItem(itemStack)
 
-        remaining?.fastFor { _, u ->
+        remaining.fastFor { _, u ->
             AxMinionsPlugin.integrations.getStackerIntegration().dropItemAt(u, u.amount, location)
         }
     }
 
     override fun addWithRemaining(itemStack: ItemStack): HashMap<Int, ItemStack>? {
-        if (linkedInventory == null) {
-            return null
-        }
-
-        return linkedInventory?.addItem(itemStack)
+        return getLinkedInventory()?.addItem(itemStack)
     }
 
     override fun addToContainerOrDrop(itemStack: Iterable<ItemStack>) {
@@ -716,18 +723,6 @@ class Minion(
 
     override fun setTicking(ticking: Boolean) {
         this.ticking = ticking
-
-        if (linkedChest == null) return
-
-        if (ticking) {
-            Scheduler.get().runAt(linkedChest) { a ->
-                if (linkedChest!!.world!!.isChunkLoaded(linkedChest!!.blockX shr 4, linkedChest!!.blockZ shr 4)) {
-                    linkedInventory = (linkedChest?.block?.state as? Container)?.inventory
-                }
-            }
-        } else {
-            linkedInventory = null
-        }
     }
 
     override fun setRange(range: Double) {
@@ -774,7 +769,7 @@ class Minion(
             if (Config.CAN_BREAK_TOOLS()) {
                 if (Config.PULL_FROM_CHEST()) {
                     val item = pullFromChest()
-                    linkedInventory?.addItem(tool)
+                    getLinkedInventory()?.addItem(tool)
                     setTool(item)
 
                     if (!tool.type.isAir && notDurable.contains(tool.type)) {
@@ -793,7 +788,7 @@ class Minion(
             } else {
                 if (Config.PULL_FROM_CHEST()) {
                     val item = pullFromChest()
-                    linkedInventory?.addItem(tool)
+                    getLinkedInventory()?.addItem(tool)
                     setTool(item)
 
                     if (!tool.type.isAir && notDurable.contains(tool.type)) {
@@ -840,7 +835,7 @@ class Minion(
             if (Config.CAN_BREAK_TOOLS()) {
                 if (Config.PULL_FROM_CHEST()) {
                     val item = pullFromChest()
-                    linkedInventory?.addItem(tool)
+                    getLinkedInventory()?.addItem(tool)
                     setTool(item)
 
                     if (!tool.type.isAir && notDurable.contains(tool.type)) {
@@ -859,7 +854,7 @@ class Minion(
             } else {
                 if (Config.PULL_FROM_CHEST()) {
                     val item = pullFromChest()
-                    linkedInventory?.addItem(tool)
+                    getLinkedInventory()?.addItem(tool)
                     setTool(item)
 
                     if (!tool.type.isAir && notDurable.contains(tool.type)) {
@@ -886,10 +881,11 @@ class Minion(
             allowedTools.add(Material.matchMaterial(it) ?: return@fastFor)
         }
 
-        linkedInventory?.contents?.fastFor {
+        val inventory = getLinkedInventory() ?: return ItemStack(Material.AIR)
+        inventory.contents?.fastFor {
             if (it == null || it.type !in allowedTools) return@fastFor
 
-            linkedInventory?.remove(it)
+            inventory.remove(it)
             return it
         }
 

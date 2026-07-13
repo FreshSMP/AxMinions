@@ -31,7 +31,7 @@ class H2DataHandler : DataHandler {
         config.setDataSourceClassName("org.h2.jdbcx.JdbcDataSource")
         config.addDataSourceProperty("url", "jdbc:h2:async:./${AxMinionsPlugin.INSTANCE.dataFolder}/data")
         config.setAutoCommit(true)
-        dataSource = HikariDataSource(config) 
+        dataSource = HikariDataSource(config)
 
         dataSource.connection.use { connection ->
             connection.prepareStatement("CREATE TABLE IF NOT EXISTS `axminions_types`(`id` INT AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(64));")
@@ -119,42 +119,58 @@ class H2DataHandler : DataHandler {
                 statement.setInt(2, typeId)
                 statement.executeQuery().use { resultSet ->
                     while (resultSet.next()) {
-                        val locationId = resultSet.getInt("location_id")
-                        val chestLocationId = resultSet.getInt("chest_location_id")
-                        val ownerId = resultSet.getObject("owner_id") as UUID
-                        val direction = Direction.entries[resultSet.getByte("direction").toInt()]
-                        val level = resultSet.getShort("level")
-                        val storage = resultSet.getDouble("storage")
-                        val actions = resultSet.getLong("actions")
-                        val tool = resultSet.getString("tool")
-                        val charge = resultSet.getLong("charge")
+                        var locationId = 0
+                        try {
+                            locationId = resultSet.getInt("location_id")
+                            val chestLocationId = resultSet.getInt("chest_location_id")
+                            val ownerId = resultSet.getObject("owner_id") as UUID
+                            val direction = Direction.entries[resultSet.getByte("direction").toInt()]
+                            val level = resultSet.getShort("level")
+                            val storage = resultSet.getDouble("storage")
+                            val actions = resultSet.getLong("actions")
+                            val tool = resultSet.getString("tool")
+                            val charge = resultSet.getLong("charge")
 
-                        val location = getLocation(locationId)
-                        var chestLocation: Location? = null
-                        if (chestLocationId != 0) {
-                            chestLocation = getLocation(chestLocationId)
+                            val location = getLocation(locationId)
+                            if (location?.world == null) {
+                                AxMinionsPlugin.INSTANCE.logger.warning(
+                                    "Skipping minion load for location id $locationId (type ${minionType.getName()}, world ${world.name}): location or world could not be resolved"
+                                )
+                                continue
+                            }
+
+                            var chestLocation: Location? = null
+                            if (chestLocationId != 0) {
+                                chestLocation = getLocation(chestLocationId)
+                            }
+
+                            var itemStack = ItemStack(Material.AIR)
+                            if (tool != null) {
+                                itemStack = Serializers.ITEM_STACK.deserialize(tool)
+                            }
+
+                            com.artillexstudios.axminions.minions.Minion(
+                                location,
+                                ownerId,
+                                Bukkit.getOfflinePlayer(ownerId),
+                                minionType,
+                                level.toInt(),
+                                itemStack,
+                                chestLocation,
+                                direction,
+                                actions,
+                                storage,
+                                locationId,
+                                chestLocationId,
+                                charge
+                            )
+                        } catch (throwable: Throwable) {
+                            AxMinionsPlugin.INSTANCE.logger.log(
+                                java.util.logging.Level.SEVERE,
+                                "[${Thread.currentThread().name}] Failed to load minion (type ${minionType.getName()}, world ${world.name}, location id $locationId), skipping this minion and continuing",
+                                throwable
+                            )
                         }
-
-                        var itemStack = ItemStack(Material.AIR)
-                        if (tool != null) {
-                            itemStack = Serializers.ITEM_STACK.deserialize(tool)
-                        }
-
-                        com.artillexstudios.axminions.minions.Minion(
-                            location!!,
-                            ownerId,
-                            Bukkit.getOfflinePlayer(ownerId),
-                            minionType,
-                            level.toInt(),
-                            itemStack,
-                            chestLocation,
-                            direction,
-                            actions,
-                            storage,
-                            locationId,
-                            chestLocationId,
-                            charge
-                        )
                     }
                 }
             }
@@ -259,7 +275,7 @@ class H2DataHandler : DataHandler {
 
         val extra = getExtraSlots(minion.getOwnerUUID())
 
-        dataSource.connection.use { connection ->       
+        dataSource.connection.use { connection ->
             connection.prepareStatement(
                 "MERGE INTO `axminions_users`(`uuid`, `name`, `island_slots`) KEY(`uuid`) VALUES (?,?,?);",
                 Statement.RETURN_GENERATED_KEYS

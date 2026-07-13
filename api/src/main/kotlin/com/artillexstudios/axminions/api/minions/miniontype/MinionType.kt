@@ -66,6 +66,12 @@ abstract class MinionType(private val name: String, private val defaults: InputS
         if (!com.artillexstudios.axminions.api.config.Config.WORK_WHEN_OWNER_OFFLINE() && !minion.isOwnerOnline()) return
         if (!shouldRun(minion)) return
 
+        val chest = minion.getLinkedChest()
+        if (chest != null) {
+            val world = chest.world ?: return
+            if (!world.isChunkLoaded(chest.blockX shr 4, chest.blockZ shr 4)) return
+        }
+
         minion.resetAnimation()
         run(minion)
     }
