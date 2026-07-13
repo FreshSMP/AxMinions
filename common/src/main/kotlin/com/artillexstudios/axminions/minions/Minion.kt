@@ -89,7 +89,7 @@ class Minion(
     }
 
     private lateinit var entity: PacketEntity
-    private var nextAction = 0
+    private var nextAction = 1
     private var range = 0.0
 
     @Volatile
@@ -169,8 +169,8 @@ class Minion(
                     AxMinionsPlugin.INSTANCE.logger.log(
                         java.util.logging.Level.SEVERE,
                         "[${Thread.currentThread().name}] Exception while handling interaction with minion" +
-                            " (type=${type.getName()}, owner=${owner.name}, location=${location.world?.name} ${location.blockX},${location.blockY},${location.blockZ})" +
-                            " triggered by player ${event.player.name}",
+                                " (type=${type.getName()}, owner=${owner.name}, location=${location.world?.name} ${location.blockX},${location.blockY},${location.blockZ})" +
+                                " triggered by player ${event.player.name}",
                         throwable
                     )
                 } finally {
@@ -735,7 +735,7 @@ class Minion(
     }
 
     override fun setNextAction(nextAction: Int) {
-        this.nextAction = nextAction
+        this.nextAction = if (nextAction < 1) 1 else nextAction
     }
 
     override fun markDirty() {
