@@ -27,22 +27,29 @@ import org.bukkit.entity.Player
 import java.util.*
 
 object DamageHandler {
-    private var DUMMY_ENTITY = Fox(EntityTypes.FOX, (Bukkit.getWorlds()[0] as CraftWorld).handle)
-    private var minion: Minion? = null
+    private val FALLBACK_UUID = UUID.randomUUID()
+    private val DUMMIES = ThreadLocal.withInitial { HashMap<UUID, Fox>() }
+    private val CURRENT_DUMMY = ThreadLocal<Fox?>()
+    private val CURRENT_MINION = ThreadLocal<Minion?>()
 
     fun getUUID(): UUID {
-        return DUMMY_ENTITY.uuid
+        return CURRENT_DUMMY.get()?.uuid ?: FALLBACK_UUID
     }
 
     fun getMinion(): Minion? {
-        return minion
+        return CURRENT_MINION.get()
     }
 
     fun damage(source: Minion, entity: Entity) {
         val nmsEntity = (entity as CraftEntity).handle
+        val world = source.getLocation().world ?: return
+        val level = (world as CraftWorld).handle
+        val dummy = DUMMIES.get().computeIfAbsent(world.uid) { Fox(EntityTypes.FOX, level) }
+        dummy.setPos(source.getLocation().x, source.getLocation().y, source.getLocation().z)
 
-        synchronized(DUMMY_ENTITY) {
-            this.minion = source
+        CURRENT_DUMMY.set(dummy)
+        CURRENT_MINION.set(source)
+        try {
             var f = 1
 
             val nmsItem: ItemStack
@@ -59,12 +66,12 @@ object DamageHandler {
                     }
             }
 
-            DUMMY_ENTITY.setItemSlot(EquipmentSlot.MAINHAND, nmsItem)
+            dummy.setItemSlot(EquipmentSlot.MAINHAND, nmsItem)
 
             if (!nmsEntity.isAttackable || entity is Player) return
             val f2 = 1.0f
 
-            val damageSource = nmsEntity.damageSources().noAggroMobAttack(DUMMY_ENTITY)
+            val damageSource = nmsEntity.damageSources().noAggroMobAttack(dummy)
             var f1 = EnchantmentHelper.modifyDamage(
                 nmsEntity.level() as ServerLevel,
                 nmsItem,
@@ -159,10 +166,9 @@ object DamageHandler {
                                     return
                                 }
 
-                                // CraftBukkit start - Only apply knockback if the damage hits
                                 if (entityliving.hurtServer(
                                         (source.getLocation().world as CraftWorld).handle as ServerLevel,
-                                        nmsEntity.damageSources().noAggroMobAttack(DUMMY_ENTITY),
+                                        nmsEntity.damageSources().noAggroMobAttack(dummy),
                                         f4
                                     )
                                 ) {
@@ -174,7 +180,6 @@ object DamageHandler {
                                         0.0f
                                     )
                                 }
-                                // CraftBukkit end
                             }
                         }
 
@@ -225,7 +230,9 @@ object DamageHandler {
                     }
                 }
             }
-            this.minion = null
+        } finally {
+            CURRENT_MINION.set(null)
+            CURRENT_DUMMY.set(null)
         }
     }
 
