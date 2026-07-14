@@ -8,7 +8,8 @@ import com.artillexstudios.axminions.api.events.MinionChestLinkEvent
 import com.artillexstudios.axminions.api.events.PreMinionDamageEntityEvent
 import com.artillexstudios.axminions.api.minions.Minion
 import org.bukkit.Bukkit
-import java.util.WeakHashMap
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import org.bukkit.Material
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
@@ -19,18 +20,23 @@ import kotlin.math.min
 
 class LinkingListener : Listener {
     companion object {
-        val linking = WeakHashMap<Player, Minion>()
+        val linking = ConcurrentHashMap<UUID, Minion>()
         private val CONTAINERS = listOf(Material.BARREL, Material.CHEST, Material.TRAPPED_CHEST)
+    }
+
+    @EventHandler
+    fun onPlayerQuitEvent(event: org.bukkit.event.player.PlayerQuitEvent) {
+        linking.remove(event.player.uniqueId)
     }
 
     @EventHandler
     fun onPlayerInteractEvent(event: PlayerInteractEvent) {
         if (event.clickedBlock == null) return
-        if (event.player !in linking) return
+        if (!linking.containsKey(event.player.uniqueId)) return
         if (event.clickedBlock!!.type !in CONTAINERS) return
         if (!AxMinionsPlugin.integrations.getProtectionIntegration().canBuildAt(event.player, event.clickedBlock!!.location)) return
 
-        val minion = linking.remove(event.player) ?: return
+        val minion = linking.remove(event.player.uniqueId) ?: return
 
         val linkEvent = MinionChestLinkEvent(
             minion,

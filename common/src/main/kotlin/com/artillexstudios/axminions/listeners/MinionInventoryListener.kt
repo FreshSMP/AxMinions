@@ -139,7 +139,7 @@ class MinionInventoryListener : Listener {
                 }
 
                 player.sendMessage(StringUtils.formatToString(Messages.PREFIX() + Messages.LINK_START()))
-                LinkingListener.linking[player] = minion
+                LinkingListener.linking[player.uniqueId] = minion
                 player.closeInventory()
             }
 
@@ -244,9 +244,7 @@ class MinionInventoryListener : Listener {
                             }
 
                             AxMinionsPlugin.integrations.getEconomyIntegration()?.let {
-                                minion.getOwner()?.let { player ->
-                                    it.takeBalance(player, Config.CHARGE_PRICE())
-                                }
+                                it.takeBalance(player, Config.CHARGE_PRICE())
                             }
                         }
 
@@ -301,9 +299,7 @@ class MinionInventoryListener : Listener {
                         }
 
                         AxMinionsPlugin.integrations.getEconomyIntegration()?.let {
-                            minion.getOwner()?.let { player ->
-                                it.takeBalance(player, Config.CHARGE_PRICE())
-                            }
+                            it.takeBalance(player, Config.CHARGE_PRICE())
                         }
                     }
 

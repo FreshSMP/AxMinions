@@ -89,7 +89,10 @@ class Minion(
     }
 
     private lateinit var entity: PacketEntity
+    @Volatile
     private var nextAction = 1
+
+    @Volatile
     private var range = 0.0
 
     @Volatile
@@ -224,7 +227,7 @@ class Minion(
             return
         }
 
-        LinkingListener.linking.remove(event.player)
+        LinkingListener.linking.remove(event.player.uniqueId)
         remove()
         setTicking(false)
         openInventories.fastFor { it.viewers.fastFor { viewer -> viewer.closeInventory() } }
@@ -439,7 +442,7 @@ class Minion(
     }
 
     override fun openInventory(player: Player) {
-        LinkingListener.linking.remove(player)
+        LinkingListener.linking.remove(player.uniqueId)
         val inventory = Bukkit.createInventory(
             this,
             Config.GUI_SIZE(),
@@ -536,6 +539,7 @@ class Minion(
 
     override fun setLevel(level: Int) {
         this.level = level
+        markDirty()
         updateArmour()
         updateInventories()
 
